@@ -67,7 +67,7 @@ def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False)
     direction = 0  # start right
 
     while True:
-        run = rng.randint(3, 12) if IS_HORIZ[direction] else rng.randint(2, 5)
+        run = rng.randint(3, 12) if IS_HORIZ[direction] else rng.randint(1, 2)
         dr, dc = DIRS[direction]
         for _ in range(run):
             nr, nc = next_pos(row, col, dr, dc)
