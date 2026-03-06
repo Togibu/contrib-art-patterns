@@ -15,7 +15,8 @@ def run(context: dict[str, Any]) -> None:
     print("Text pattern generator")
     text = input("Text (A-Z, 0-9, space): ").strip().upper()
     start = input("Start date for first column (Sunday) [YYYY-MM-DD, blank=next Sunday]: ").strip()
-    commits_per_fill = int(input("Commits per filled cell: ").strip())
+    commits_str = input("Commits per filled cell [1]: ").strip()
+    commits_per_fill = int(commits_str) if commits_str else 1
 
     font = {
         "A": [" ### ", "#   #", "#   #", "#####", "#   #", "#   #", "#   #"],
