@@ -25,17 +25,41 @@ def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False)
         nr = (r + dr) % 7 if wrap else r + dr
         return nr, c + dc
 
-    def can_move(r: int, c: int, d: int) -> bool:
-        dr, dc = DIRS[d]
-        nr, nc = next_pos(r, c, dr, dc)
-        return 0 <= nr < 7 and 0 <= nc < num_weeks and (nr, nc) not in visited
-
     def mark(r: int, c: int) -> bool:
         if 0 <= r < 7 and 0 <= c < num_weeks and (r, c) not in visited:
             grid[r][c] = True
             visited.add((r, c))
             return True
         return False
+
+    def count_reachable(start_r: int, start_c: int) -> int:
+        """How many unvisited cells are reachable from (start_r, start_c)?"""
+        seen: set[tuple[int, int]] = set()
+        stack = [(start_r, start_c)]
+        while stack:
+            cr, cc = stack.pop()
+            if (cr, cc) in seen:
+                continue
+            seen.add((cr, cc))
+            for dr, dc in DIRS:
+                nr, nc = next_pos(cr, cc, dr, dc)
+                if 0 <= nr < 7 and 0 <= nc < num_weeks and (nr, nc) not in visited and (nr, nc) not in seen:
+                    stack.append((nr, nc))
+        return len(seen)
+
+    def choose_direction(r: int, c: int, options: list[int]) -> int:
+        if len(options) == 1:
+            return options[0]
+        # Score each option by how many cells remain reachable afterwards
+        scores = []
+        for d in options:
+            dr, dc = DIRS[d]
+            nr, nc = next_pos(r, c, dr, dc)
+            scores.append(count_reachable(nr, nc))
+        # Pick randomly among the options that keep at least 70% of max reachable space
+        max_score = max(scores)
+        good = [d for d, s in zip(options, scores) if s >= max_score * 0.7]
+        return rng.choice(good)
 
     row = rng.randint(0, 4)
     col = 0
@@ -44,7 +68,6 @@ def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False)
 
     while True:
         run = rng.randint(3, 12) if IS_HORIZ[direction] else rng.randint(2, 5)
-
         dr, dc = DIRS[direction]
         for _ in range(run):
             nr, nc = next_pos(row, col, dr, dc)
@@ -52,17 +75,27 @@ def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False)
                 break
             row, col = nr, nc
 
-        # Prefer 90-degree turns; fall back to straight if stuck
+        # Prefer 90-degree turns; fall back to straight if needed
         left_turn = (direction - 1) % 4
         right_turn = (direction + 1) % 4
 
-        available = [d for d in [left_turn, right_turn] if can_move(row, col, d)]
-        if not available and can_move(row, col, direction):
-            available.append(direction)
+        available = []
+        for d in [left_turn, right_turn]:
+            dr2, dc2 = DIRS[d]
+            nr, nc = next_pos(row, col, dr2, dc2)
+            if 0 <= nr < 7 and 0 <= nc < num_weeks and (nr, nc) not in visited:
+                available.append(d)
+
+        if not available:
+            dr2, dc2 = DIRS[direction]
+            nr, nc = next_pos(row, col, dr2, dc2)
+            if 0 <= nr < 7 and 0 <= nc < num_weeks and (nr, nc) not in visited:
+                available.append(direction)
+
         if not available:
             break
 
-        direction = rng.choice(available)
+        direction = choose_direction(row, col, available)
 
     return grid
 
@@ -84,8 +117,7 @@ def run(context: dict[str, Any]) -> None:
     commits_per_fill = int(commits_str) if commits_str else 1
     seed_str = input("Random seed (blank=random): ").strip()
     seed = int(seed_str) if seed_str else None
-
-    wrap_str = input("Wrap vertically (snake exits top → enters bottom and vice versa)? [y/N]: ").strip().lower()
+    wrap_str = input("Wrap vertically? [y/N]: ").strip().lower()
     wrap = wrap_str in ("y", "yes")
 
     grid = _generate_snake(num_weeks, seed, wrap=wrap)
