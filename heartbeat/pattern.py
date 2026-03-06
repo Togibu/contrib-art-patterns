@@ -13,29 +13,39 @@ def _write_schedule(path: Path, data: dict[str, Any]) -> None:
 
 def _generate_heartbeat(
     num_weeks: int,
-    interval: int = 8,
+    interval: int = 12,
     amplitude: int = 3,
 ) -> list[list[bool]]:
     """
-    Baseline at row 3. Each beat = flat section + upward V-spike.
-    The baseline is absent (broken) at spike positions.
+    One beat cycle = flat + UP spike + flat gap (ST) + DOWN spike (S-wave).
 
-    V-spike shape (amplitude=3, width=6):
-      col: 0  1  2  3  4  5
-      row0: .  .  #  #  .  .
-      row1: .  #  .  .  #  .
-      row2: #  .  .  .  .  #
-      row3: .  .  .  .  .  .  <- baseline absent here
+    UP spike (amplitude=3, gap width=4):
+      col: 0  1  2  3
+      row0: .  .  #  .   <- diagonal left reaches peak
+      row1: .  #  .  #   <- diagonal left / vertical right drop
+      row2: #  .  .  #   <- start of diagonal / vertical right drop
+      row3: .  .  .  .   <- baseline absent
+
+    DOWN spike / S-wave (amplitude=3, gap width=3, approach 1 col before):
+      col: -1  0  1  2   (col 0 = gap start)
+      row3:  #  .  .  .  <- col -1 has baseline, cols 0-2 gap
+      row4:  #  .  .  #  <- approach at col -1, exit at col +2
+      row5:  .  #  #  .  <- vertical descent / start of ascent
+      row6:  .  #  .  .  <- bottom of spike
     """
     BASELINE = 3
     grid = [[False] * num_weeks for _ in range(7)]
 
-    spike_width = 2 * amplitude
-    flat_before = max(1, interval - spike_width)
+    amplitude_s = amplitude          # S-wave depth equals QRS amplitude
+    up_gap = amplitude + 1           # UP spike gap width
+    flat_between = 2                 # ST-segment + approach col
+    down_gap = amplitude_s           # DOWN spike gap width
+    beat_inner = up_gap + flat_between + down_gap
+    flat_before = max(0, interval - beat_inner)
 
     col = 0
     while col < num_weeks:
-        # Flat baseline section before spike
+        # Flat baseline before the beat
         for c in range(col, min(col + flat_before, num_weeks)):
             grid[BASELINE][c] = True
         col += flat_before
@@ -43,24 +53,62 @@ def _generate_heartbeat(
         if col >= num_weeks:
             break
 
-        # If not enough room for a full spike, fill baseline to end
-        if col + spike_width > num_weeks:
+        # UP spike: diagonal left ascent + vertical right drop
+        if col + up_gap > num_weeks:
             for c in range(col, num_weeks):
                 grid[BASELINE][c] = True
             break
-
-        # V-spike: symmetric, left and right diagonals meeting at top
+        # Diagonal left: (row2,col0) → (row1,col1) → (row0,col2) for amplitude=3
         for i in range(amplitude):
-            row = BASELINE - 1 - i  # row2, row1, row0 for amplitude=3
-            c_left = col + i
-            c_right = col + spike_width - 1 - i
-            if row >= 0:
-                if c_left < num_weeks:
-                    grid[row][c_left] = True
-                if c_right < num_weeks and c_right != c_left:
-                    grid[row][c_right] = True
+            r = BASELINE - 1 - i
+            c_ = col + i
+            if r >= 0 and c_ < num_weeks:
+                grid[r][c_] = True
+        # Vertical right drop: col+amplitude, from row(BASELINE-1) down to row(BASELINE-amplitude+1)
+        right_col = col + amplitude
+        if right_col < num_weeks:
+            for i in range(1, amplitude):
+                r = BASELINE - amplitude + i
+                if r >= 0:
+                    grid[r][right_col] = True
+        col += up_gap
 
-        col += spike_width
+        if col >= num_weeks:
+            break
+
+        # ST flat + approach col (2 cols, baseline present in both)
+        for c in range(col, min(col + flat_between, num_weeks)):
+            grid[BASELINE][c] = True
+        approach_col = col + flat_between - 1
+        # Approach: 1 row below baseline, 1 col before the DOWN gap
+        if approach_col < num_weeks:
+            grid[BASELINE + 1][approach_col] = True
+        col += flat_between
+
+        if col >= num_weeks:
+            break
+
+        # DOWN spike (S-wave): vertical descent left + diagonal ascent right
+        if col + down_gap > num_weeks:
+            for c in range(col, num_weeks):
+                grid[BASELINE][c] = True
+            break
+        # Vertical descent at col (gap start): rows BASELINE+2 to BASELINE+amplitude_s
+        for depth in range(2, amplitude_s + 1):
+            r = BASELINE + depth
+            if r <= 6:
+                grid[r][col] = True
+        # Diagonal ascent: (BASELINE+amplitude_s-1, col+1) ... (BASELINE+1, col+amplitude_s-1)
+        for i in range(1, amplitude_s):
+            r = BASELINE + amplitude_s - i
+            c_ = col + i
+            if r <= 6 and c_ < num_weeks:
+                grid[r][c_] = True
+        col += down_gap
+
+    # Fill any remaining cols with baseline
+    for c in range(col, num_weeks):
+        grid[BASELINE][c] = True
 
     return grid
 
@@ -71,17 +119,17 @@ def run(context: dict[str, Any]) -> None:
     weeks_str = input("Number of weeks (grid width) [52]: ").strip()
     num_weeks = int(weeks_str) if weeks_str else 52
 
-    interval_str = input("Columns between spikes [8]: ").strip()
-    interval = int(interval_str) if interval_str else 8
-
     amplitude_str = input("Spike amplitude (1–3) [3]: ").strip()
     amplitude = int(amplitude_str) if amplitude_str else 3
     amplitude = max(1, min(3, amplitude))
 
-    spike_width = 2 * amplitude
-    if interval <= spike_width:
-        print(f"Note: interval adjusted to {spike_width + 1} (must be > spike width of {spike_width}).")
-        interval = spike_width + 1
+    beat_inner = (amplitude + 1) + 2 + amplitude
+    min_interval = beat_inner + 1
+    interval_str = input(f"Columns per heartbeat cycle (min {min_interval}) [12]: ").strip()
+    interval = int(interval_str) if interval_str else 12
+    if interval < min_interval:
+        print(f"Note: interval adjusted to {min_interval}.")
+        interval = min_interval
 
     start = input("Start date for first column (Sunday) [YYYY-MM-DD, blank=next Sunday]: ").strip()
     commits_str = input("Commits per filled cell [1]: ").strip()
