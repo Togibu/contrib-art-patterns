@@ -15,64 +15,45 @@ def _write_schedule(path: Path, data: dict[str, Any]) -> None:
 def _generate_snake(num_weeks: int, seed: int | None = None) -> list[list[bool]]:
     rng = random.Random(seed)
     grid = [[False] * num_weeks for _ in range(7)]
-    visited: set[tuple[int, int]] = set()
 
-    def mark(r: int, c: int) -> bool:
-        if 0 <= r < 7 and 0 <= c < num_weeks and (r, c) not in visited:
-            grid[r][c] = True
-            visited.add((r, c))
-            return True
-        return False
-
-    row = rng.randint(0, 3)
+    row = rng.randint(0, 2)  # start in upper rows
     col = 0
-    mark(row, col)
-
     h_dir = 1  # start going right
 
+    grid[row][col] = True
+
     while True:
-        # Long horizontal run
-        h_run = rng.randint(3, max(4, num_weeks // 3))
-        for _ in range(h_run):
-            if not mark(row, col + h_dir):
-                break
-            col += h_dir
+        # Go toward the opposite edge with a small random indent
+        indent = rng.randint(0, min(3, max(1, num_weeks // 15)))
+        target_col = (num_weeks - 1 - indent) if h_dir == 1 else indent
 
-        # Vertical turn: prefer moving toward the opposite half to stay in bounds
-        if row < 3:
-            v_dir = 1
-        elif row > 3:
-            v_dir = -1
-        else:
-            v_dir = rng.choice([-1, 1])
-        # small chance to go the other way anyway
-        if rng.random() < 0.2:
-            v_dir = -v_dir
-
-        max_v = (6 - row) if v_dir == 1 else row
-        if max_v < 1:
-            v_dir = -v_dir
-            max_v = (6 - row) if v_dir == 1 else row
-        if max_v < 1:
+        # Ensure we actually move forward
+        if h_dir == 1 and target_col <= col:
+            break
+        if h_dir == -1 and target_col >= col:
             break
 
-        v_run = rng.randint(2, min(5, max_v))
-        moved = 0
-        for _ in range(v_run):
-            if not mark(row + v_dir, col):
-                break
-            row += v_dir
-            moved += 1
+        # Mark horizontal segment
+        step = 1 if h_dir == 1 else -1
+        while col != target_col:
+            col += step
+            grid[row][col] = True
 
-        if moved == 0:
+        # Go down 1–3 rows
+        max_down = 6 - row
+        if max_down == 0:
+            break
+        v_steps = rng.randint(1, min(3, max_down))
+        for _ in range(v_steps):
+            row += 1
+            grid[row][col] = True
+            if row >= 6:
+                break
+
+        if row >= 6:
             break
 
-        # Flip horizontal direction for the next run
         h_dir = -h_dir
-
-        # Stop if the next horizontal step is out of bounds or blocked
-        if not (0 <= col + h_dir < num_weeks) or (row, col + h_dir) in visited:
-            break
 
     return grid
 
