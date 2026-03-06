@@ -12,11 +12,11 @@ def _write_schedule(path: Path, data: dict[str, Any]) -> None:
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
 
-def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False) -> list[list[bool]]:
+def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False, max_per_col: int = 2) -> list[list[bool]]:
     rng = random.Random(seed)
     grid = [[False] * num_weeks for _ in range(7)]
     visited: set[tuple[int, int]] = set()
-    col_fills = [0] * num_weeks  # filled cells per column — max 2
+    col_fills = [0] * num_weeks
 
     # 0=right, 1=down, 2=left, 3=up
     DIRS = [(0, 1), (1, 0), (0, -1), (-1, 0)]
@@ -27,7 +27,7 @@ def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False)
         return nr, c + dc
 
     def can_place(r: int, c: int) -> bool:
-        return 0 <= r < 7 and 0 <= c < num_weeks and (r, c) not in visited and col_fills[c] < 2
+        return 0 <= r < 7 and 0 <= c < num_weeks and (r, c) not in visited and col_fills[c] < max_per_col
 
     def mark(r: int, c: int) -> bool:
         if can_place(r, c):
@@ -124,7 +124,10 @@ def run(context: dict[str, Any]) -> None:
     wrap_str = input("Wrap vertically? [y/N]: ").strip().lower()
     wrap = wrap_str in ("y", "yes")
 
-    grid = _generate_snake(num_weeks, seed, wrap=wrap)
+    max_col_str = input("Max filled cells per column (1=sparse, 3=dense) [2]: ").strip()
+    max_per_col = int(max_col_str) if max_col_str else 2
+
+    grid = _generate_snake(num_weeks, seed, wrap=wrap, max_per_col=max_per_col)
 
     if start:
         start_date = date.fromisoformat(start)
@@ -167,6 +170,7 @@ def run(context: dict[str, Any]) -> None:
             "commits_per_fill": commits_per_fill,
             "seed": seed,
             "wrap": wrap,
+            "max_per_col": max_per_col,
             "preview": preview_str,
         },
         "schedule": schedule,
