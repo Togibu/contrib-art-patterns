@@ -16,35 +16,51 @@ def _generate_heartbeat(
     interval: int = 8,
     amplitude: int = 3,
 ) -> list[list[bool]]:
-    BASELINE = 3  # middle row (0=top/Sun, 6=bottom/Sat)
+    """
+    Baseline at row 3. Each beat = flat section + upward V-spike.
+    The baseline is absent (broken) at spike positions.
+
+    V-spike shape (amplitude=3, width=6):
+      col: 0  1  2  3  4  5
+      row0: .  .  #  #  .  .
+      row1: .  #  .  .  #  .
+      row2: #  .  .  .  .  #
+      row3: .  .  .  .  .  .  <- baseline absent here
+    """
+    BASELINE = 3
     grid = [[False] * num_weeks for _ in range(7)]
 
-    # Fill flat baseline across all columns
-    for col in range(num_weeks):
-        grid[BASELINE][col] = True
+    spike_width = 2 * amplitude
+    flat_before = max(1, interval - spike_width)
 
-    # Spike shape (col_offset from spike_start, absolute row):
-    #   +1: rising (P-wave)
-    #   +2: QRS peak
-    #   +3: S-dip below baseline
-    #   +5: T-wave bump
-    peak_row = BASELINE - amplitude
-    dip_row = min(BASELINE + amplitude - 1, 6)
-    rise_row = max(BASELINE - (amplitude - 1), 0)
-    t_row = max(BASELINE - amplitude // 2, 0)
+    col = 0
+    while col < num_weeks:
+        # Flat baseline section before spike
+        for c in range(col, min(col + flat_before, num_weeks)):
+            grid[BASELINE][c] = True
+        col += flat_before
 
-    spike_shape = [
-        (1, rise_row),  # rising
-        (2, peak_row),  # QRS peak
-        (3, dip_row),   # S dip
-        (5, t_row),     # T wave
-    ]
+        if col >= num_weeks:
+            break
 
-    for spike_start in range(0, num_weeks, interval):
-        for col_offset, row in spike_shape:
-            col = spike_start + col_offset
-            if 0 <= col < num_weeks and 0 <= row < 7:
-                grid[row][col] = True
+        # If not enough room for a full spike, fill baseline to end
+        if col + spike_width > num_weeks:
+            for c in range(col, num_weeks):
+                grid[BASELINE][c] = True
+            break
+
+        # V-spike: symmetric, left and right diagonals meeting at top
+        for i in range(amplitude):
+            row = BASELINE - 1 - i  # row2, row1, row0 for amplitude=3
+            c_left = col + i
+            c_right = col + spike_width - 1 - i
+            if row >= 0:
+                if c_left < num_weeks:
+                    grid[row][c_left] = True
+                if c_right < num_weeks and c_right != c_left:
+                    grid[row][c_right] = True
+
+        col += spike_width
 
     return grid
 
@@ -61,6 +77,11 @@ def run(context: dict[str, Any]) -> None:
     amplitude_str = input("Spike amplitude (1–3) [3]: ").strip()
     amplitude = int(amplitude_str) if amplitude_str else 3
     amplitude = max(1, min(3, amplitude))
+
+    spike_width = 2 * amplitude
+    if interval <= spike_width:
+        print(f"Note: interval adjusted to {spike_width + 1} (must be > spike width of {spike_width}).")
+        interval = spike_width + 1
 
     start = input("Start date for first column (Sunday) [YYYY-MM-DD, blank=next Sunday]: ").strip()
     commits_str = input("Commits per filled cell [1]: ").strip()
