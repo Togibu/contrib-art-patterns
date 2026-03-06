@@ -146,6 +146,12 @@ def run(context: dict[str, Any]) -> None:
     print(f"\nDate range:   {start_date.isoformat()} .. {end_date.isoformat()}")
     print(f"Filled cells: {filled}")
 
+    if end_date.year > start_date.year:
+        print(
+            f"\nWarning: the schedule crosses into {end_date.year}. "
+            "GitHub's contribution graph resets each year, so the pattern will be split across two graphs."
+        )
+
     confirm = input("\nWrite schedule.yml? [Y/n]: ").strip().lower()
     if confirm not in ("", "y", "yes"):
         print("Aborted.")
