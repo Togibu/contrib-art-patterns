@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -13,38 +14,33 @@ def _write_schedule(path: Path, data: dict[str, Any]) -> None:
 
 def _generate_heartbeat(
     num_weeks: int,
-    interval: int = 12,
-    amplitude: int = 3,
+    min_amplitude: int = 1,
+    max_amplitude: int = 3,
+    min_interval: int = 8,
+    max_interval: int = 16,
+    seed: int | None = None,
 ) -> list[list[bool]]:
     """
-    One beat cycle = flat + UP spike + flat gap (ST) + DOWN spike (S-wave).
+    Each beat picks a random amplitude and interval within the given ranges.
 
-    UP spike (amplitude=3, gap width=4):
-      col: 0  1  2  3
-      row0: .  .  #  .   <- diagonal left reaches peak
-      row1: .  #  .  #   <- diagonal left / vertical right drop
-      row2: #  .  .  #   <- start of diagonal / vertical right drop
-      row3: .  .  .  .   <- baseline absent
+    UP spike (amplitude=A, gap width=A+1):
+      diagonal left ascent + vertical right drop, baseline absent.
 
-    DOWN spike / S-wave (amplitude=3, gap width=3, approach 1 col before):
-      col: -1  0  1  2   (col 0 = gap start)
-      row3:  #  .  .  .  <- col -1 has baseline, cols 0-2 gap
-      row4:  #  .  .  #  <- approach at col -1, exit at col +2
-      row5:  .  #  #  .  <- vertical descent / start of ascent
-      row6:  .  #  .  .  <- bottom of spike
+    DOWN spike / S-wave (amplitude=A, gap width=A, approach 1 col before):
+      vertical descent left + diagonal right ascent, baseline absent.
     """
+    rng = random.Random(seed)
     BASELINE = 3
     grid = [[False] * num_weeks for _ in range(7)]
 
-    amplitude_s = amplitude          # S-wave depth equals QRS amplitude
-    up_gap = amplitude + 1           # UP spike gap width
-    flat_between = 2                 # ST-segment + approach col
-    down_gap = amplitude_s           # DOWN spike gap width
-    beat_inner = up_gap + flat_between + down_gap
-    flat_before = max(0, interval - beat_inner)
-
     col = 0
     while col < num_weeks:
+        amplitude = rng.randint(min_amplitude, max_amplitude)
+        amplitude_s = amplitude
+        beat_inner = (amplitude + 1) + 2 + amplitude_s  # up_gap + flat_between + down_gap
+        interval = rng.randint(min_interval, max_interval)
+        flat_before = max(0, interval - beat_inner)
+
         # Flat baseline before the beat
         for c in range(col, min(col + flat_before, num_weeks)):
             grid[BASELINE][c] = True
@@ -54,57 +50,52 @@ def _generate_heartbeat(
             break
 
         # UP spike: diagonal left ascent + vertical right drop
-        if col + up_gap > num_weeks:
+        if col + amplitude + 1 > num_weeks:
             for c in range(col, num_weeks):
                 grid[BASELINE][c] = True
             break
-        # Diagonal left: (row2,col0) → (row1,col1) → (row0,col2) for amplitude=3
         for i in range(amplitude):
             r = BASELINE - 1 - i
             c_ = col + i
             if r >= 0 and c_ < num_weeks:
                 grid[r][c_] = True
-        # Vertical right drop: col+amplitude, from row(BASELINE-1) down to row(BASELINE-amplitude+1)
         right_col = col + amplitude
         if right_col < num_weeks:
             for i in range(1, amplitude):
                 r = BASELINE - amplitude + i
                 if r >= 0:
                     grid[r][right_col] = True
-        col += up_gap
+        col += amplitude + 1
 
         if col >= num_weeks:
             break
 
         # ST flat + approach col (2 cols, baseline present in both)
-        for c in range(col, min(col + flat_between, num_weeks)):
+        for c in range(col, min(col + 2, num_weeks)):
             grid[BASELINE][c] = True
-        approach_col = col + flat_between - 1
-        # Approach: 1 row below baseline, 1 col before the DOWN gap
+        approach_col = col + 1
         if approach_col < num_weeks:
             grid[BASELINE + 1][approach_col] = True
-        col += flat_between
+        col += 2
 
         if col >= num_weeks:
             break
 
-        # DOWN spike (S-wave): vertical descent left + diagonal ascent right
-        if col + down_gap > num_weeks:
+        # DOWN spike (S-wave): vertical descent + diagonal ascent
+        if col + amplitude_s > num_weeks:
             for c in range(col, num_weeks):
                 grid[BASELINE][c] = True
             break
-        # Vertical descent at col (gap start): rows BASELINE+2 to BASELINE+amplitude_s
         for depth in range(2, amplitude_s + 1):
             r = BASELINE + depth
             if r <= 6:
                 grid[r][col] = True
-        # Diagonal ascent: (BASELINE+amplitude_s-1, col+1) ... (BASELINE+1, col+amplitude_s-1)
         for i in range(1, amplitude_s):
             r = BASELINE + amplitude_s - i
             c_ = col + i
             if r <= 6 and c_ < num_weeks:
                 grid[r][c_] = True
-        col += down_gap
+        col += amplitude_s
 
     # Fill any remaining cols with baseline
     for c in range(col, num_weeks):
@@ -119,23 +110,30 @@ def run(context: dict[str, Any]) -> None:
     weeks_str = input("Number of weeks (grid width) [52]: ").strip()
     num_weeks = int(weeks_str) if weeks_str else 52
 
-    amplitude_str = input("Spike amplitude (1–3) [3]: ").strip()
-    amplitude = int(amplitude_str) if amplitude_str else 3
-    amplitude = max(1, min(3, amplitude))
+    min_amp_str = input("Min spike amplitude (1–3) [1]: ").strip()
+    min_amplitude = int(min_amp_str) if min_amp_str else 1
+    min_amplitude = max(1, min(3, min_amplitude))
 
-    beat_inner = (amplitude + 1) + 2 + amplitude
-    min_interval = beat_inner + 1
-    interval_str = input(f"Columns per heartbeat cycle (min {min_interval}) [12]: ").strip()
-    interval = int(interval_str) if interval_str else 12
-    if interval < min_interval:
-        print(f"Note: interval adjusted to {min_interval}.")
-        interval = min_interval
+    max_amp_str = input("Max spike amplitude (1–3) [3]: ").strip()
+    max_amplitude = int(max_amp_str) if max_amp_str else 3
+    max_amplitude = max(min_amplitude, min(3, max_amplitude))
+
+    min_int_str = input("Min columns between beats [8]: ").strip()
+    min_interval = int(min_int_str) if min_int_str else 8
+    min_interval = max(1, min_interval)
+
+    max_int_str = input("Max columns between beats [16]: ").strip()
+    max_interval = int(max_int_str) if max_int_str else 16
+    max_interval = max(min_interval, max_interval)
+
+    seed_str = input("Random seed (blank=random): ").strip()
+    seed = int(seed_str) if seed_str else None
 
     start = input("Start date for first column (Sunday) [YYYY-MM-DD, blank=next Sunday]: ").strip()
     commits_str = input("Commits per filled cell [1]: ").strip()
     commits_per_fill = int(commits_str) if commits_str else 1
 
-    grid = _generate_heartbeat(num_weeks, interval, amplitude)
+    grid = _generate_heartbeat(num_weeks, min_amplitude, max_amplitude, min_interval, max_interval, seed)
 
     if start:
         start_date = date.fromisoformat(start)
@@ -181,8 +179,11 @@ def run(context: dict[str, Any]) -> None:
         "pattern": "heartbeat",
         "meta": {
             "weeks": num_weeks,
-            "interval": interval,
-            "amplitude": amplitude,
+            "min_amplitude": min_amplitude,
+            "max_amplitude": max_amplitude,
+            "min_interval": min_interval,
+            "max_interval": max_interval,
+            "seed": seed,
             "start_date": start_date.isoformat(),
             "commits_per_fill": commits_per_fill,
             "preview": preview_str,
