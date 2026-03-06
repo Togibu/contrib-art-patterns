@@ -16,6 +16,7 @@ def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False)
     rng = random.Random(seed)
     grid = [[False] * num_weeks for _ in range(7)]
     visited: set[tuple[int, int]] = set()
+    col_fills = [0] * num_weeks  # filled cells per column — max 2
 
     # 0=right, 1=down, 2=left, 3=up
     DIRS = [(0, 1), (1, 0), (0, -1), (-1, 0)]
@@ -25,15 +26,18 @@ def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False)
         nr = (r + dr) % 7 if wrap else r + dr
         return nr, c + dc
 
+    def can_place(r: int, c: int) -> bool:
+        return 0 <= r < 7 and 0 <= c < num_weeks and (r, c) not in visited and col_fills[c] < 2
+
     def mark(r: int, c: int) -> bool:
-        if 0 <= r < 7 and 0 <= c < num_weeks and (r, c) not in visited:
+        if can_place(r, c):
             grid[r][c] = True
             visited.add((r, c))
+            col_fills[c] += 1
             return True
         return False
 
     def count_reachable(start_r: int, start_c: int) -> int:
-        """How many unvisited cells are reachable from (start_r, start_c)?"""
         seen: set[tuple[int, int]] = set()
         stack = [(start_r, start_c)]
         while stack:
@@ -43,7 +47,7 @@ def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False)
             seen.add((cr, cc))
             for dr, dc in DIRS:
                 nr, nc = next_pos(cr, cc, dr, dc)
-                if 0 <= nr < 7 and 0 <= nc < num_weeks and (nr, nc) not in visited and (nr, nc) not in seen:
+                if can_place(nr, nc) and (nr, nc) not in seen:
                     stack.append((nr, nc))
         return len(seen)
 
