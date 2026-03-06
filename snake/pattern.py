@@ -87,13 +87,13 @@ def _generate_snake(num_weeks: int, seed: int | None = None, wrap: bool = False)
         for d in [left_turn, right_turn]:
             dr2, dc2 = DIRS[d]
             nr, nc = next_pos(row, col, dr2, dc2)
-            if 0 <= nr < 7 and 0 <= nc < num_weeks and (nr, nc) not in visited:
+            if can_place(nr, nc):
                 available.append(d)
 
         if not available:
             dr2, dc2 = DIRS[direction]
             nr, nc = next_pos(row, col, dr2, dc2)
-            if 0 <= nr < 7 and 0 <= nc < num_weeks and (nr, nc) not in visited:
+            if can_place(nr, nc):
                 available.append(direction)
 
         if not available:
