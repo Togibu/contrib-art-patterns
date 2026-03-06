@@ -95,6 +95,19 @@ def run(context: dict[str, Any]) -> None:
                 day = start_date + timedelta(days=(col * 7 + row))
                 schedule[day.isoformat()] = commits_per_fill
 
-    data = {"pattern": "text", "schedule": schedule}
+    preview_str = "\n".join(
+        "".join("#" if c != " " else "." for c in row) for row in grid
+    )
+
+    data = {
+        "pattern": "text",
+        "meta": {
+            "text": text,
+            "start_date": start_date.isoformat(),
+            "commits_per_fill": commits_per_fill,
+            "preview": preview_str,
+        },
+        "schedule": schedule,
+    }
     _write_schedule(context["schedule_path"], data)
     print(f"Wrote schedule with {len(schedule)} days.")
