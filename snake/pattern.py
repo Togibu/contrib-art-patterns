@@ -15,45 +15,56 @@ def _write_schedule(path: Path, data: dict[str, Any]) -> None:
 def _generate_snake(num_weeks: int, seed: int | None = None) -> list[list[bool]]:
     rng = random.Random(seed)
     grid = [[False] * num_weeks for _ in range(7)]
+    visited: set[tuple[int, int]] = set()
 
-    row = rng.randint(0, 2)  # start in upper rows
+    def mark(r: int, c: int) -> bool:
+        if 0 <= r < 7 and 0 <= c < num_weeks and (r, c) not in visited:
+            grid[r][c] = True
+            visited.add((r, c))
+            return True
+        return False
+
+    # 0=right, 1=down, 2=left, 3=up
+    DIRS = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+    IS_HORIZ = {0: True, 1: False, 2: True, 3: False}
+
+    row = rng.randint(0, 4)
     col = 0
-    h_dir = 1  # start going right
-
-    grid[row][col] = True
+    mark(row, col)
+    direction = 0  # start right
 
     while True:
-        # Go toward the opposite edge with a small random indent
-        indent = rng.randint(0, min(3, max(1, num_weeks // 15)))
-        target_col = (num_weeks - 1 - indent) if h_dir == 1 else indent
+        # Short segments: 3–12 horizontal, 2–5 vertical
+        run = rng.randint(3, 12) if IS_HORIZ[direction] else rng.randint(2, 5)
 
-        # Ensure we actually move forward
-        if h_dir == 1 and target_col <= col:
-            break
-        if h_dir == -1 and target_col >= col:
-            break
-
-        # Mark horizontal segment
-        step = 1 if h_dir == 1 else -1
-        while col != target_col:
-            col += step
-            grid[row][col] = True
-
-        # Go down 1–3 rows
-        max_down = 6 - row
-        if max_down == 0:
-            break
-        v_steps = rng.randint(1, min(3, max_down))
-        for _ in range(v_steps):
-            row += 1
-            grid[row][col] = True
-            if row >= 6:
+        dr, dc = DIRS[direction]
+        for _ in range(run):
+            if not mark(row + dr, col + dc):
                 break
+            row += dr
+            col += dc
 
-        if row >= 6:
+        # Prefer 90-degree turns; fall back to straight if stuck
+        left_turn = (direction - 1) % 4
+        right_turn = (direction + 1) % 4
+
+        available = []
+        for d in [left_turn, right_turn]:
+            dr2, dc2 = DIRS[d]
+            nr, nc = row + dr2, col + dc2
+            if 0 <= nr < 7 and 0 <= nc < num_weeks and (nr, nc) not in visited:
+                available.append(d)
+
+        if not available:
+            dr2, dc2 = DIRS[direction]
+            nr, nc = row + dr2, col + dc2
+            if 0 <= nr < 7 and 0 <= nc < num_weeks and (nr, nc) not in visited:
+                available.append(direction)
+
+        if not available:
             break
 
-        h_dir = -h_dir
+        direction = rng.choice(available)
 
     return grid
 
