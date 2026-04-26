@@ -39,7 +39,7 @@ def _render(grid: list[list[int]], color: bool | None = None) -> str:
     return "\n".join(lines)
 
 
-def _generate_rain(
+def _generate_matrix(
     num_weeks: int,
     density: float,
     min_length: int,
@@ -47,10 +47,10 @@ def _generate_rain(
     seed: int | None,
 ) -> list[list[int]]:
     """
-    Each column has probability `density` of containing a raindrop.
-    A drop is a vertical streak of length L; the bottom-most cell is the head
-    (level 4), fading linearly up to level 1 at the tail.
-    Drops can overlap: where they do, the brighter level wins.
+    Matrix-style digital rain. Each column has probability `density` of
+    containing a falling stream. A stream is a vertical streak of length L;
+    the bottom-most cell is the head (level 4), fading linearly up to level 1
+    at the tail. Streams can overlap: where they do, the brighter level wins.
     """
     rng = random.Random(seed)
     grid = [[0] * num_weeks for _ in range(7)]
@@ -74,20 +74,20 @@ def _generate_rain(
 
 
 def run(context: dict[str, Any]) -> None:
-    print("Rain pattern generator")
+    print("Matrix pattern generator")
 
     weeks_str = input("Number of weeks (grid width) [52]: ").strip()
     num_weeks = int(weeks_str) if weeks_str else 52
 
-    density_str = input("Drop density 0.0–1.0 [0.30]: ").strip()
+    density_str = input("Stream density 0.0–1.0 [0.30]: ").strip()
     density = float(density_str) if density_str else 0.30
     density = max(0.0, min(1.0, density))
 
-    min_l_str = input("Min drop length (1–7) [2]: ").strip()
+    min_l_str = input("Min stream length (1–7) [2]: ").strip()
     min_length = int(min_l_str) if min_l_str else 2
     min_length = max(1, min(7, min_length))
 
-    max_l_str = input("Max drop length (1–7) [4]: ").strip()
+    max_l_str = input("Max stream length (1–7) [4]: ").strip()
     max_length = int(max_l_str) if max_l_str else 4
     max_length = max(min_length, min(7, max_length))
 
@@ -96,7 +96,7 @@ def run(context: dict[str, Any]) -> None:
 
     start = input("Start date for first column (Sunday) [YYYY-MM-DD, blank=next Sunday]: ").strip()
 
-    grid = _generate_rain(num_weeks, density, min_length, max_length, seed)
+    grid = _generate_matrix(num_weeks, density, min_length, max_length, seed)
 
     if start:
         start_date = date.fromisoformat(start)
@@ -106,14 +106,14 @@ def run(context: dict[str, Any]) -> None:
         start_date = today + timedelta(days=days_until_sun)
 
     end_date = start_date + timedelta(days=(num_weeks * 7 - 1))
-    drops = sum(1 for c in range(num_weeks) if any(grid[r][c] for r in range(7)))
+    streams = sum(1 for c in range(num_weeks) if any(grid[r][c] for r in range(7)))
     total_commits = sum(LEVEL_COMMITS[lvl] for row in grid for lvl in row)
 
     print("\nPreview (7 rows = Sun–Sat, glyph density = commit count):")
     print(_render(grid))
 
     print(f"\nDate range:    {start_date.isoformat()} .. {end_date.isoformat()}")
-    print(f"Drops:         {drops}")
+    print(f"Streams:       {streams}")
     print(f"Total commits: {total_commits}")
 
     if end_date.year > start_date.year:
@@ -137,7 +137,7 @@ def run(context: dict[str, Any]) -> None:
                 schedule[day.isoformat()] = LEVEL_COMMITS[level]
 
     data = {
-        "pattern": "rain",
+        "pattern": "matrix",
         "meta": {
             "weeks": num_weeks,
             "density": density,

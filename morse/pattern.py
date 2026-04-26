@@ -136,8 +136,10 @@ def run(context: dict[str, Any]) -> None:
         print("Aborted (empty message).")
         return
 
-    weeks_str = input("Number of weeks (grid width) [52]: ").strip()
-    num_weeks = int(weeks_str) if weeks_str else 52
+    num_weeks = _required_columns(message)
+    if num_weeks == 0:
+        print("Aborted (no encodable characters in message).")
+        return
 
     level_str = input("Brightness level (1–4) [4]: ").strip()
     level = int(level_str) if level_str else 4
@@ -157,7 +159,6 @@ def run(context: dict[str, Any]) -> None:
 
     start = input("Start date for first column (Sunday) [YYYY-MM-DD, blank=next Sunday]: ").strip()
 
-    needed = _required_columns(message)
     grid, drawn, total = _generate_morse(num_weeks, message, level, top_row, bot_row)
 
     if start:
@@ -174,13 +175,7 @@ def run(context: dict[str, Any]) -> None:
     print(_render(grid))
 
     print(f"\nMessage:       {message.upper()}")
-    print(f"Encoded chars: {drawn} of {total}")
-    print(f"Columns used:  {needed} of {num_weeks}")
-    if drawn < total:
-        print(
-            f"WARNING: message truncated — needs {needed} columns but only "
-            f"{num_weeks} available. Increase weeks or shorten message."
-        )
+    print(f"Width:         {num_weeks} weeks (auto-sized for message)")
     print(f"Date range:    {start_date.isoformat()} .. {end_date.isoformat()}")
     print(f"Total commits: {total_commits}")
 
